@@ -1,0 +1,5 @@
+FROM alpine:3.21
+RUN apk add --no-cache ca-certificates tzdata
+COPY mailcraft /mailcraft
+EXPOSE 1025 8025
+ENTRYPOINT ["/mailcraft"]
