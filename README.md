@@ -15,7 +15,7 @@
 
 **MailCraft** is a small, fast, low memory, zero-dependency, multi-platform email testing tool for developers.
 
-![Screenshot](https://raw.githubusercontent.com/elpol4k0/mailcraft/develop/screenshot.png)
+![Screenshot](screenshot.png)
 
 It acts as an SMTP server and provides a modern web UI to view and inspect captured emails.
 
