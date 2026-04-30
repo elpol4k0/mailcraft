@@ -8,7 +8,6 @@
     <a href="https://goreportcard.com/report/github.com/elpol4k0/mailcraft"><img src="https://goreportcard.com/badge/github.com/elpol4k0/mailcraft" alt="Go Report Card"></a>
     <br>
     <a href="https://github.com/elpol4k0/mailcraft/releases/latest"><img src="https://img.shields.io/github/v/release/elpol4k0/mailcraft.svg" alt="Latest release"></a>
-    <a href="https://github.com/elpol4k0/mailcraft/pkgs/container/mailcraft"><img src="https://ghcr-badge.egpl.dev/elpol4k0/mailcraft/size" alt="Docker image size"></a>
     <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-purple.svg" alt="License: MIT"></a>
 </div>
 
