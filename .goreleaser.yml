@@ -4,7 +4,6 @@ project_name: mailcraft
 
 before:
   hooks:
-    - go mod tidy
     - sh -c "cd web && npm ci && npm run build"
 
 builds:
