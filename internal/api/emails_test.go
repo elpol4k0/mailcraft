@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"testing/fstest"
+
 	"github.com/go-chi/chi/v5"
 
 	"mailcraft/internal/api"
@@ -24,7 +26,7 @@ func setupServer(t *testing.T) (*api.Server, store.Store) {
 	cfg := &config.Config{
 		HTTPAddr: "127.0.0.1:0",
 	}
-	srv := api.NewServer(cfg, st, eng)
+	srv := api.NewServer(cfg, st, eng, fstest.MapFS{})
 	return srv, st
 }
 
@@ -116,8 +118,8 @@ func TestAPIDeleteEmail(t *testing.T) {
 	addTestEmail(t, st, "del1", "sender@example.com", "Delete Me")
 
 	w := doRequest(t, srv, "DELETE", "/api/v1/emails/del1", nil)
-	if w.Code != http.StatusOK {
-		t.Errorf("status = %d, want 200", w.Code)
+	if w.Code != http.StatusNoContent {
+		t.Errorf("status = %d, want 204", w.Code)
 	}
 
 	_, err := st.Get(context.Background(), "del1")

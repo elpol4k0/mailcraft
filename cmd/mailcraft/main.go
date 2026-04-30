@@ -13,6 +13,7 @@ import (
 	"mailcraft/internal/rules"
 	mcsmtp "mailcraft/internal/smtp"
 	"mailcraft/internal/store"
+	"mailcraft/ui"
 )
 
 func main() {
@@ -49,7 +50,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	httpSrv := api.NewServer(cfg, st, eng)
+	httpSrv := api.NewServer(cfg, st, eng, ui.Assets)
 	if err := httpSrv.Start(); err != nil {
 		slog.Error("http server error", "err", err)
 		os.Exit(1)

@@ -14,22 +14,23 @@ import (
 	"mailcraft/internal/config"
 	"mailcraft/internal/rules"
 	"mailcraft/internal/store"
-	"mailcraft/ui"
 )
 
 type Server struct {
 	cfg        *config.Config
 	store      store.Store
 	engine     *rules.Engine
+	assets     fs.FS
 	httpServer *http.Server
 	startTime  time.Time
 }
 
-func NewServer(cfg *config.Config, st store.Store, eng *rules.Engine) *Server {
+func NewServer(cfg *config.Config, st store.Store, eng *rules.Engine, assets fs.FS) *Server {
 	return &Server{
 		cfg:       cfg,
 		store:     st,
 		engine:    eng,
+		assets:    assets,
 		startTime: time.Now(),
 	}
 }
@@ -104,7 +105,7 @@ func (s *Server) Start() error {
 
 	s.RegisterRoutes(r)
 
-	r.Handle("/*", spaHandler(ui.Assets))
+	r.Handle("/*", spaHandler(s.assets))
 
 	s.httpServer = &http.Server{
 		Addr:    s.cfg.HTTPAddr,
