@@ -1,6 +1,6 @@
 .PHONY: build test clean run vet lint frontend build-all docker-build
 
-BINARY := mailcraft
+BINARY := mailcraftmc
 CMD := ./cmd/mailcraft
 
 ifeq ($(OS),Windows_NT)
