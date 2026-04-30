@@ -142,7 +142,7 @@ func (s *Server) handleGetAttachment(w http.ResponseWriter, r *http.Request) {
 			}
 			w.Header().Set("Content-Type", ct)
 			w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename=%q`, att.Filename))
-			w.Write(att.Data)
+			_, _ = w.Write(att.Data)
 			return
 		}
 	}
@@ -317,7 +317,7 @@ func (s *Server) handleGetSMTPLog(w http.ResponseWriter, r *http.Request) {
 	if log == "" {
 		log = "(no SMTP log available — email was received before logging was enabled)"
 	}
-	w.Write([]byte(log))
+	_, _ = w.Write([]byte(log))
 }
 
 func (s *Server) handleExportEmail(w http.ResponseWriter, r *http.Request) {
@@ -341,7 +341,7 @@ func (s *Server) handleExportEmail(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename=%q`, filename))
 
 	if len(email.RawMessage) > 0 {
-		w.Write(email.RawMessage)
+		_, _ = w.Write(email.RawMessage)
 	} else {
 		fmt.Fprintf(w, "From: %s\r\nTo: %s\r\nSubject: %s\r\nDate: %s\r\n\r\n%s",
 			email.From,
