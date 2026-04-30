@@ -94,9 +94,9 @@ func (s *Server) handleGetEmailRaw(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "message/rfc822")
 	if len(email.RawMessage) > 0 {
-		w.Write(email.RawMessage)
+		_, _ = w.Write(email.RawMessage)
 	} else {
-		w.Write([]byte("(raw message not available)"))
+		_, _ = w.Write([]byte("(raw message not available)"))
 	}
 }
 
@@ -114,9 +114,9 @@ func (s *Server) handleGetEmailHTML(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if email.HTML != "" {
-		w.Write([]byte(email.HTML))
+		_, _ = w.Write([]byte(email.HTML))
 	} else {
-		w.Write([]byte("<pre>" + email.Text + "</pre>"))
+		_, _ = w.Write([]byte("<pre>" + email.Text + "</pre>"))
 	}
 }
 
@@ -169,7 +169,7 @@ func (s *Server) handleDeleteEmails(w http.ResponseWriter, r *http.Request) {
 		IDs []string `json:"ids"`
 	}
 	if r.ContentLength > 0 {
-		json.NewDecoder(r.Body).Decode(&body)
+		_ = json.NewDecoder(r.Body).Decode(&body)
 	}
 
 	if err := s.store.DeleteAll(r.Context(), body.IDs); err != nil {
@@ -357,7 +357,7 @@ func (s *Server) handleExportEmails(w http.ResponseWriter, r *http.Request) {
 		IDs []string `json:"ids"`
 	}
 	if r.ContentLength > 0 {
-		json.NewDecoder(r.Body).Decode(&body)
+		_ = json.NewDecoder(r.Body).Decode(&body)
 	}
 
 	var emails []*store.Email
@@ -389,7 +389,7 @@ func (s *Server) handleExportEmails(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		if len(email.RawMessage) > 0 {
-			f.Write(email.RawMessage)
+			_, _ = f.Write(email.RawMessage)
 		} else {
 			fmt.Fprintf(f, "From: %s\r\nTo: %s\r\nSubject: %s\r\nDate: %s\r\n\r\n%s",
 				email.From,

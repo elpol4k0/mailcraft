@@ -185,7 +185,7 @@ func (s *Server) handleReorderRules(w http.ResponseWriter, r *http.Request) {
 		}
 		rule.Priority = i
 		rule.UpdatedAt = time.Now()
-		s.store.UpdateRule(r.Context(), rule)
+		_ = s.store.UpdateRule(r.Context(), rule)
 	}
 
 	s.refreshEngine(r)

@@ -71,7 +71,7 @@ func TestStoreSearch(t *testing.T) {
 	_ = results
 
 	// Filter by tag
-	results, total, err = s.List(ctx, store.SearchFilter{Tag: "billing"})
+	_, total, err = s.List(ctx, store.SearchFilter{Tag: "billing"})
 	if err != nil {
 		t.Fatalf("List by tag: %v", err)
 	}

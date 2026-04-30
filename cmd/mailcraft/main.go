@@ -66,6 +66,10 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	smtpSrv.Shutdown(ctx)
-	httpSrv.Shutdown(ctx)
+	if err := smtpSrv.Shutdown(ctx); err != nil {
+		slog.Error("smtp shutdown error", "err", err)
+	}
+	if err := httpSrv.Shutdown(ctx); err != nil {
+		slog.Error("http shutdown error", "err", err)
+	}
 }

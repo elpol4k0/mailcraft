@@ -111,7 +111,7 @@ func (s *Server) acceptLoop() {
 
 func (s *Server) handleConn(conn net.Conn) {
 	defer conn.Close()
-	conn.SetDeadline(time.Now().Add(10 * time.Minute))
+	_ = conn.SetDeadline(time.Now().Add(10 * time.Minute))
 
 	sess := &session{
 		conn:    conn,
@@ -134,7 +134,7 @@ type session struct {
 
 func (s *session) writeLine(line string) {
 	s.smtpLog.WriteString("S: " + line + "\n")
-	s.rw.WriteString(line + "\r\n")
+	_, _ = s.rw.WriteString(line + "\r\n")
 	s.rw.Flush()
 }
 
@@ -197,15 +197,15 @@ func (s *session) handleAuth(line string) {
 			return
 		}
 		s.writeLine("334 ")
-		s.rw.ReadString('\n')
+		_, _ = s.rw.ReadString('\n')
 		s.writeLine("235 Authentication successful")
 		return
 	}
 	if strings.Contains(upper, "LOGIN") {
 		s.writeLine("334 VXNlcm5hbWU6")
-		s.rw.ReadString('\n')
+		_, _ = s.rw.ReadString('\n')
 		s.writeLine("334 UGFzc3dvcmQ6")
-		s.rw.ReadString('\n')
+		_, _ = s.rw.ReadString('\n')
 		s.writeLine("235 Authentication successful")
 		return
 	}
