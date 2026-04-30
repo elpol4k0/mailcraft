@@ -306,6 +306,10 @@ func DefaultHandler(st store.Store, engine interface {
 
 		email.SMTPLog = smtpLog
 
+		for i := range email.Attachments {
+			email.Attachments[i].Data = nil
+		}
+
 		deleted := engine.Apply(ctx, email, st)
 		if deleted {
 			slog.Info("smtp: email deleted by rule", "from", email.From, "subject", email.Subject)
