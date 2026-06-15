@@ -297,9 +297,11 @@ export async function checkHTML(emailId: string): Promise<HTMLCheckResult> {
 
 export interface SpamCheckItem {
   name: string;
+  category: string;
   score: number;
   description: string;
   pass: boolean;
+  info: boolean;
 }
 
 export interface SpamCheckResult {

@@ -74,7 +74,7 @@ export function createEmailDetail(): HTMLElement {
     { id: 'headers', label: 'Headers' },
     { id: 'links', label: 'Link Check' },
     { id: 'htmlcheck', label: 'HTML Check' },
-    { id: 'spamcheck', label: 'Spam Check' },
+    { id: 'spamcheck', label: 'Content Check' },
     { id: 'smtp-log', label: 'SMTP Log' },
   ];
   const tabBtns: Map<DetailTab, HTMLButtonElement> = new Map();
@@ -151,7 +151,7 @@ export function createEmailDetail(): HTMLElement {
   spamCheckPanel.dataset.tab = 'spamcheck';
 
   const spamRunBtn = el('button', 'btn btn-primary btn-sm') as HTMLButtonElement;
-  spamRunBtn.innerHTML = `${icon('check-circle', 13)} Run Spam Check`;
+  spamRunBtn.innerHTML = `${icon('check-circle', 13)} Analyze Content`;
   const spamResults = el('div', '');
 
   const spamInner = el('div', '');
@@ -817,105 +817,99 @@ export function createEmailDetail(): HTMLElement {
     } finally {
       spamCheckRunning = false;
       spamRunBtn.disabled = false;
-      spamRunBtn.innerHTML = `${icon('check-circle', 13)} Run Spam Check`;
+      spamRunBtn.innerHTML = `${icon('check-circle', 13)} Analyze Content`;
     }
+  }
+
+  function renderSpamCheckItem(check: SpamCheckItem): HTMLElement {
+    const item = el('div', 'spam-check-item');
+    const ic = el('span', `spam-check-icon ${check.pass ? 'pass' : 'fail'}`, check.pass ? '✓' : '✗');
+    const nameEl = el('span', '');
+    nameEl.style.cssText = 'font-weight:600;font-size:12px;color:var(--text-primary);min-width:180px;';
+    nameEl.textContent = check.name;
+    const desc = el('span', 'spam-check-desc', check.description);
+    item.append(ic, nameEl, desc);
+    if (!check.info) {
+      const scoreEl = el('span', `spam-check-score ${check.score > 0 ? 'positive' : 'negative'}`);
+      scoreEl.textContent = (check.score > 0 ? '+' : '') + check.score.toFixed(1);
+      item.appendChild(scoreEl);
+    }
+    return item;
+  }
+
+  function spamSectionTitle(text: string): HTMLElement {
+    const t = el('div', '');
+    t.style.cssText = 'font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;padding:0 16px 6px;';
+    t.textContent = text;
+    return t;
   }
 
   function renderSpamResults(result: SpamCheckResult) {
     const container = el('div', '');
-    container.style.display = 'flex';
-    container.style.flexDirection = 'column';
-    container.style.gap = '12px';
+    container.style.cssText = 'display:flex;flex-direction:column;gap:12px;';
 
+    // Score header — framed as a content hint, not a spam probability.
     const scoreDisplay = el('div', 'spam-score-display');
-
     const scoreNum = el('div', `spam-score-number ${result.level}`);
     scoreNum.textContent = result.score.toFixed(1) + ' / 10';
 
     const levelInfo = el('div', '');
-    levelInfo.style.display = 'flex';
-    levelInfo.style.flexDirection = 'column';
-    levelInfo.style.gap = '6px';
-
-    const levelLabel = result.level === 'ham' ? '✓ HAM' : result.level === 'maybe' ? '⚠ MAYBE SPAM' : '✗ SPAM';
+    levelInfo.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
+    const levelLabel = result.level === 'ham'
+      ? '✓ LOOKS CLEAN'
+      : result.level === 'maybe'
+        ? '⚠ COULD LOOK SUSPICIOUS'
+        : '✗ LIKELY TO BE FLAGGED';
     const levelBadge = el('span', `spam-level-badge ${result.level}`, levelLabel);
-
     const scoreDesc = el('div', '');
     scoreDesc.style.cssText = 'font-size:12px;color:var(--text-muted);';
-    scoreDesc.textContent = 'Based on ' + result.checks.length + ' checks';
-
+    scoreDesc.textContent = 'Content score (lower is better). Heuristic preview of how filters may view your message content.';
     levelInfo.append(levelBadge, scoreDesc);
     scoreDisplay.append(scoreNum, levelInfo);
     container.appendChild(scoreDisplay);
 
-    const failingChecks = result.checks.filter(c => !c.pass);
+    const scored = result.checks.filter(c => !c.info);
+    const infoChecks = result.checks.filter(c => c.info);
+    const issues = scored.filter(c => !c.pass);
 
-    if (failingChecks.length > 0) {
+    // Content issues affecting the score.
+    if (issues.length > 0) {
       const failSection = el('div', '');
-      const failTitle = el('div', '');
-      failTitle.style.cssText = 'font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;padding:0 16px 6px;';
-      failTitle.textContent = 'Issues Found';
-      failSection.appendChild(failTitle);
-
-      failingChecks.forEach(check => {
-        const item = el('div', 'spam-check-item');
-
-        const icon = el('span', 'spam-check-icon fail', '✗');
-        const nameEl = el('span', '');
-        nameEl.style.cssText = 'font-weight:600;font-size:12px;color:var(--text-primary);min-width:160px;';
-        nameEl.textContent = check.name;
-
-        const desc = el('span', 'spam-check-desc', check.description);
-
-        const scoreEl = el('span', `spam-check-score ${check.score > 0 ? 'positive' : 'negative'}`);
-        scoreEl.textContent = (check.score > 0 ? '+' : '') + check.score.toFixed(1);
-
-        item.append(icon, nameEl, desc, scoreEl);
-        failSection.appendChild(item);
-      });
-
+      failSection.appendChild(spamSectionTitle(`Content issues (${issues.length})`));
+      issues.forEach(c => failSection.appendChild(renderSpamCheckItem(c)));
       container.appendChild(failSection);
+    } else {
+      const ok = el('div', '');
+      ok.style.cssText = 'padding:0 16px;font-size:13px;color:var(--green);';
+      ok.textContent = '✓ No content issues found.';
+      container.appendChild(ok);
     }
 
-    const passingChecks = result.checks.filter(c => c.pass);
-    let allShown = false;
+    // Passing scored checks (collapsed).
+    const passingChecks = scored.filter(c => c.pass);
+    if (passingChecks.length > 0) {
+      let shown = false;
+      const toggleBtn = el('button', 'btn btn-ghost btn-sm');
+      toggleBtn.style.cssText = 'align-self:flex-start;margin-left:16px;';
+      toggleBtn.textContent = `Show ${passingChecks.length} passing checks`;
+      const allSection = el('div', '');
+      allSection.style.display = 'none';
+      passingChecks.forEach(c => allSection.appendChild(renderSpamCheckItem(c)));
+      toggleBtn.addEventListener('click', () => {
+        shown = !shown;
+        allSection.style.display = shown ? 'block' : 'none';
+        toggleBtn.textContent = shown ? 'Hide passing checks' : `Show ${passingChecks.length} passing checks`;
+      });
+      container.append(toggleBtn, allSection);
+    }
 
-    const toggleBtn = el('button', 'btn btn-ghost btn-sm');
-    toggleBtn.style.cssText = 'align-self:flex-start;margin-left:16px;';
-    toggleBtn.textContent = `Show all ${result.checks.length} checks`;
-
-    const allSection = el('div', '');
-    allSection.style.display = 'none';
-
-    const allTitle = el('div', '');
-    allTitle.style.cssText = 'font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;padding:0 16px 6px;';
-    allTitle.textContent = 'Passing Checks';
-    allSection.appendChild(allTitle);
-
-    passingChecks.forEach(check => {
-      const item = el('div', 'spam-check-item');
-
-      const icon = el('span', 'spam-check-icon pass', '✓');
-      const nameEl = el('span', '');
-      nameEl.style.cssText = 'font-weight:600;font-size:12px;color:var(--text-primary);min-width:160px;';
-      nameEl.textContent = check.name;
-
-      const desc = el('span', 'spam-check-desc', check.description);
-
-      const scoreEl = el('span', `spam-check-score ${check.score < 0 ? 'negative' : 'positive'}`);
-      scoreEl.textContent = (check.score > 0 ? '+' : '') + check.score.toFixed(1);
-
-      item.append(icon, nameEl, desc, scoreEl);
-      allSection.appendChild(item);
-    });
-
-    toggleBtn.addEventListener('click', () => {
-      allShown = !allShown;
-      allSection.style.display = allShown ? 'block' : 'none';
-      toggleBtn.textContent = allShown ? 'Hide passing checks' : `Show all ${result.checks.length} checks`;
-    });
-
-    container.append(toggleBtn, allSection);
+    // Authentication: informational only, never scored in a local catcher.
+    if (infoChecks.length > 0) {
+      const infoSection = el('div', '');
+      infoSection.appendChild(spamSectionTitle('Authentication (not scored — added by your mail server)'));
+      infoChecks.forEach(c => infoSection.appendChild(renderSpamCheckItem(c)));
+      container.appendChild(infoSection);
+    }
 
     spamResults.innerHTML = '';
     spamResults.appendChild(container);
@@ -987,6 +981,7 @@ export function createEmailDetail(): HTMLElement {
   function renderDiff(emailA: Email, emailB: Email, container: HTMLElement) {
     container.innerHTML = '';
 
+    // Persistent summary (From / Subject) above the tabs.
     const headerDiff = el('div', 'compare-section');
     headerDiff.innerHTML = `
       <div class="compare-section-title">Header Comparison</div>
@@ -1007,9 +1002,46 @@ export function createEmailDetail(): HTMLElement {
     `;
     container.appendChild(headerDiff);
 
-    const bodyDiff = el('div', 'compare-section');
-    const titleEl = el('div', 'compare-section-title', 'Body Diff (Plain Text)');
-    bodyDiff.appendChild(titleEl);
+    // Tab bar to switch between comparison views.
+    const tabs: Array<{ id: string; label: string }> = [
+      { id: 'text', label: 'Plain Text' },
+      { id: 'html', label: 'HTML' },
+      { id: 'headers', label: 'Headers' },
+      { id: 'raw', label: 'Raw' },
+    ];
+    const tabBar = el('div', 'compare-tabs');
+    const panelHost = el('div', 'compare-tab-panel');
+    const buttons: Record<string, HTMLButtonElement> = {};
+
+    function select(id: string) {
+      Object.entries(buttons).forEach(([k, b]) => b.classList.toggle('active', k === id));
+      renderPanel(id);
+    }
+
+    tabs.forEach(t => {
+      const b = el('button', 'compare-tab', t.label);
+      b.addEventListener('click', () => select(t.id));
+      buttons[t.id] = b;
+      tabBar.appendChild(b);
+    });
+
+    container.appendChild(tabBar);
+    container.appendChild(panelHost);
+
+    function renderPanel(id: string) {
+      panelHost.innerHTML = '';
+      if (id === 'text') panelHost.appendChild(renderTextDiff(emailA, emailB));
+      else if (id === 'html') panelHost.appendChild(renderHtmlCompare(emailA, emailB));
+      else if (id === 'headers') panelHost.appendChild(renderHeadersDiff(emailA, emailB));
+      else if (id === 'raw') renderRawCompare(emailA, emailB, panelHost);
+    }
+
+    select('text');
+  }
+
+  function renderTextDiff(emailA: Email, emailB: Email): HTMLElement {
+    const section = el('div', 'compare-section');
+    section.appendChild(el('div', 'compare-section-title', 'Body Diff (Plain Text)'));
 
     const diffLines = computeDiff(emailA.text || '', emailB.text || '');
     const pre = el('pre', 'compare-diff-pre');
@@ -1021,8 +1053,147 @@ export function createEmailDetail(): HTMLElement {
       pre.appendChild(span);
       pre.appendChild(document.createElement('br'));
     });
-    bodyDiff.appendChild(pre);
-    container.appendChild(bodyDiff);
+    section.appendChild(pre);
+    return section;
+  }
+
+  function renderHtmlCompare(emailA: Email, emailB: Email): HTMLElement {
+    const section = el('div', 'compare-section');
+
+    const titleRow = el('div', 'compare-html-toolbar');
+    titleRow.appendChild(el('div', 'compare-section-title', 'HTML'));
+    const toggle = el('div', 'compare-subtabs');
+    const renderedBtn = el('button', 'compare-subtab', 'Rendered');
+    const sourceBtn = el('button', 'compare-subtab', 'Source');
+    toggle.append(renderedBtn, sourceBtn);
+    titleRow.appendChild(toggle);
+    section.appendChild(titleRow);
+
+    const body = el('div', 'compare-html-body');
+    section.appendChild(body);
+
+    function showRendered() {
+      renderedBtn.classList.add('active');
+      sourceBtn.classList.remove('active');
+      body.innerHTML = '';
+      const grid = el('div', 'compare-html-grid');
+      [emailA, emailB].forEach(email => {
+        const col = el('div', 'compare-html-col');
+        if (email.html) {
+          const frame = document.createElement('iframe');
+          frame.className = 'compare-html-frame';
+          frame.sandbox.add('allow-same-origin');
+          frame.title = 'HTML preview';
+          const doc = `<html><head><meta charset="utf-8"><style>
+            body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;line-height:1.5;color:#111;margin:0;padding:12px}
+            img{max-width:100%}a{color:#7c3aed}
+          </style></head><body>${email.html}</body></html>`;
+          frame.src = URL.createObjectURL(new Blob([doc], { type: 'text/html' }));
+          col.appendChild(frame);
+        } else {
+          col.appendChild(el('div', 'compare-empty', '(no HTML content)'));
+        }
+        grid.appendChild(col);
+      });
+      body.appendChild(grid);
+    }
+
+    function showSource() {
+      sourceBtn.classList.add('active');
+      renderedBtn.classList.remove('active');
+      body.innerHTML = '';
+      if (!emailA.html && !emailB.html) {
+        body.appendChild(el('div', 'compare-empty', '(no HTML content)'));
+        return;
+      }
+      const diffLines = computeDiff(emailA.html || '', emailB.html || '');
+      const pre = el('pre', 'compare-diff-pre');
+      diffLines.forEach(line => {
+        const span = document.createElement('span');
+        span.className = `diff-line diff-${line.type}`;
+        const prefix = line.type === 'added' ? '+ ' : line.type === 'removed' ? '- ' : '  ';
+        span.textContent = prefix + line.text;
+        pre.appendChild(span);
+        pre.appendChild(document.createElement('br'));
+      });
+      body.appendChild(pre);
+    }
+
+    renderedBtn.addEventListener('click', showRendered);
+    sourceBtn.addEventListener('click', showSource);
+    showRendered();
+    return section;
+  }
+
+  function renderHeadersDiff(emailA: Email, emailB: Email): HTMLElement {
+    const section = el('div', 'compare-section');
+    section.appendChild(el('div', 'compare-section-title', 'All Headers'));
+
+    const flat = (h: Record<string, string[]>) => {
+      const m: Record<string, string> = {};
+      Object.entries(h || {}).forEach(([k, v]) => { m[k] = (v || []).join(', '); });
+      return m;
+    };
+    const ha = flat(emailA.headers);
+    const hb = flat(emailB.headers);
+    const keys = Array.from(new Set([...Object.keys(ha), ...Object.keys(hb)]))
+      .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+
+    const table = el('table', 'compare-headers-table');
+    keys.forEach(k => {
+      const va = ha[k] ?? '';
+      const vb = hb[k] ?? '';
+      const changed = va !== vb;
+      const row = document.createElement('tr');
+      if (changed) row.className = 'diff-changed-row';
+      const kc = el('td', 'compare-h-key', k);
+      const ac = el('td', 'compare-h-val', va || '—');
+      const bc = el('td', 'compare-h-val', vb || '—');
+      row.append(kc, ac, bc);
+      table.appendChild(row);
+    });
+    section.appendChild(table);
+    return section;
+  }
+
+  async function renderRawCompare(emailA: Email, emailB: Email, host: HTMLElement) {
+    host.innerHTML = '';
+    const section = el('div', 'compare-section');
+
+    // Metadata summary first.
+    const meta = el('div', 'compare-fields');
+    [emailA, emailB].forEach(email => {
+      const col = el('div', 'compare-col');
+      col.innerHTML = `
+        <div class="compare-field-label">Size</div>
+        <div class="compare-field-value">${formatSize(email.size)}</div>
+        <div class="compare-field-label" style="margin-top:8px">Received</div>
+        <div class="compare-field-value">${formatDate(email.received_at)}</div>
+        <div class="compare-field-label" style="margin-top:8px">Attachments</div>
+        <div class="compare-field-value">${(email.attachments || []).length}</div>
+      `;
+      meta.appendChild(col);
+    });
+    section.appendChild(el('div', 'compare-section-title', 'Metadata'));
+    section.appendChild(meta);
+    host.appendChild(section);
+
+    const rawSection = el('div', 'compare-section');
+    rawSection.appendChild(el('div', 'compare-section-title', 'Raw Source'));
+    const grid = el('div', 'compare-html-grid');
+    rawSection.appendChild(grid);
+    host.appendChild(rawSection);
+
+    try {
+      const [rawA, rawB] = await Promise.all([getEmailRaw(emailA.id), getEmailRaw(emailB.id)]);
+      [rawA, rawB].forEach(raw => {
+        const pre = el('pre', 'compare-diff-pre compare-raw-pre');
+        pre.textContent = raw;
+        grid.appendChild(pre);
+      });
+    } catch {
+      grid.appendChild(el('div', 'compare-empty', 'Failed to load raw source'));
+    }
   }
 
   function computeDiff(textA: string, textB: string): Array<{type: 'same'|'added'|'removed'; text: string}> {

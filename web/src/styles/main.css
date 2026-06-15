@@ -1958,3 +1958,39 @@ input::placeholder { color: var(--text-muted); }
 .diff-added { color: var(--green); background: rgba(34,197,94,0.08); }
 .diff-removed { color: var(--red); background: rgba(239,68,68,0.08); text-decoration: line-through; }
 .diff-same { color: var(--text-muted); }
+
+/* Compare tabs */
+.compare-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+.compare-tab {
+  background: none; border: none; cursor: pointer;
+  padding: 8px 14px; font-size: 13px; color: var(--text-secondary);
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.compare-tab:hover { color: var(--text-primary); }
+.compare-tab.active { color: var(--text-primary); border-bottom-color: var(--accent, #7c3aed); }
+.compare-tab-panel { min-height: 120px; }
+
+/* HTML tab: rendered / source toggle */
+.compare-html-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.compare-html-toolbar .compare-section-title { margin-bottom: 0; }
+.compare-subtabs { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.compare-subtab {
+  background: none; border: none; cursor: pointer;
+  padding: 4px 12px; font-size: 12px; color: var(--text-secondary);
+}
+.compare-subtab:hover { color: var(--text-primary); }
+.compare-subtab.active { background: var(--accent, #7c3aed); color: #fff; }
+
+/* Side-by-side HTML / raw */
+.compare-html-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.compare-html-col { background: var(--bg-overlay); border-radius: 6px; overflow: hidden; min-height: 320px; display: flex; }
+.compare-html-frame { width: 100%; min-height: 320px; border: 0; background: #fff; }
+.compare-empty { padding: 20px; color: var(--text-muted); font-size: 13px; }
+.compare-raw-pre { white-space: pre-wrap; word-break: break-word; max-height: 420px; overflow: auto; margin: 0; }
+
+/* Headers comparison table */
+.compare-headers-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.compare-headers-table td { padding: 5px 8px; vertical-align: top; border-bottom: 1px solid var(--border); }
+.compare-h-key { color: var(--text-secondary); font-weight: 600; white-space: nowrap; width: 1%; }
+.compare-h-val { color: var(--text-primary); word-break: break-word; font-family: monospace; }
+.compare-headers-table tr.diff-changed-row { background: rgba(245,158,11,0.08); }
