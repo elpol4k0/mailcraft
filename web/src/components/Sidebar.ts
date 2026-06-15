@@ -131,6 +131,8 @@ export function createSidebar(): HTMLElement {
         state.view.set('inbox');
         state.filterRead.set(null);
         state.filterStarred.set(null);
+        state.filterMailbox.set(null);
+        state.filterFolder.set(null);
       });
       tagsList.appendChild(item);
     });
@@ -252,6 +254,7 @@ export function createSidebar(): HTMLElement {
         state.filterRead.set(null);
         state.filterStarred.set(null);
         state.filterTag.set(null);
+        state.filterMailbox.set(null);
       });
       foldersList.appendChild(item);
     });
