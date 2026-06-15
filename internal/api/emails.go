@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	mcsmtp "mailcraft/internal/smtp"
 	"mailcraft/internal/store"
 )
 
@@ -134,20 +135,37 @@ func (s *Server) handleGetAttachment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	for _, att := range email.Attachments {
-		if att.Filename == filename {
-			ct := att.ContentType
-			if ct == "" {
-				ct = "application/octet-stream"
-			}
-			w.Header().Set("Content-Type", ct)
-			w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename=%q`, att.Filename))
-			_, _ = w.Write(att.Data)
-			return
+	var found *store.Attachment
+	for i := range email.Attachments {
+		if email.Attachments[i].Filename == filename {
+			found = &email.Attachments[i]
+			break
 		}
 	}
+	if found == nil {
+		writeError(w, http.StatusNotFound, "attachment not found")
+		return
+	}
 
-	writeError(w, http.StatusNotFound, "attachment not found")
+	if len(email.RawMessage) == 0 {
+		writeError(w, http.StatusInternalServerError, "raw message not available")
+		return
+	}
+
+	data, ct, err := mcsmtp.ExtractAttachment(email.RawMessage, filename)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("extract attachment: %v", err))
+		return
+	}
+	if ct == "" {
+		ct = found.ContentType
+	}
+	if ct == "" {
+		ct = "application/octet-stream"
+	}
+	w.Header().Set("Content-Type", ct)
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename=%q`, filename))
+	_, _ = w.Write(data)
 }
 
 func (s *Server) handleDeleteEmail(w http.ResponseWriter, r *http.Request) {

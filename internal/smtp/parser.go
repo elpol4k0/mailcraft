@@ -265,3 +265,16 @@ func parseAddressList(s string) []string {
 	}
 	return out
 }
+
+func ExtractAttachment(raw []byte, filename string) ([]byte, string, error) {
+	email, err := ParseEmail(raw)
+	if err != nil {
+		return nil, "", fmt.Errorf("parse message: %w", err)
+	}
+	for _, att := range email.Attachments {
+		if att.Filename == filename {
+			return att.Data, att.ContentType, nil
+		}
+	}
+	return nil, "", fmt.Errorf("attachment %q not found", filename)
+}

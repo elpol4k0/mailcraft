@@ -12,6 +12,11 @@ import (
 	"mailcraft/internal/store"
 )
 
+// SpamCheckResult is a content-focused analysis of an email message.
+// It is NOT a deliverability/spam-probability prediction: things like IP and
+// domain reputation, real DKIM/SPF/DMARC validation, and recipient behaviour
+// cannot be evaluated by a local mail catcher. The score only reflects
+// message-level content heuristics a developer can actually act on.
 type SpamCheckResult struct {
 	Score  float64         `json:"score"`
 	Level  string          `json:"level"`
@@ -20,9 +25,14 @@ type SpamCheckResult struct {
 
 type SpamCheckItem struct {
 	Name        string  `json:"name"`
+	Category    string  `json:"category"`
 	Score       float64 `json:"score"`
 	Description string  `json:"description"`
 	Pass        bool    `json:"pass"`
+	// Info marks a check as informational only: it is shown to the user but
+	// does NOT contribute to the content score (e.g. auth headers that are
+	// added by the sending MTA, not by the message content).
+	Info bool `json:"info"`
 }
 
 func (s *Server) handleSpamCheck(w http.ResponseWriter, r *http.Request) {
@@ -36,64 +46,44 @@ func (s *Server) handleSpamCheck(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, result)
 }
 
+var tagStripper = regexp.MustCompile(`<[^>]+>`)
+var excessivePunct = regexp.MustCompile(`[!?]{3,}`)
+
 func runSpamCheck(email *store.Email) SpamCheckResult {
 	var checks []SpamCheckItem
+	add := func(name, category string, score float64, desc string, pass bool) {
+		checks = append(checks, SpamCheckItem{
+			Name: name, Category: category, Score: score, Description: desc, Pass: pass,
+		})
+	}
+	info := func(name, desc string, pass bool) {
+		checks = append(checks, SpamCheckItem{
+			Name: name, Category: "authentication", Score: 0, Description: desc, Pass: pass, Info: true,
+		})
+	}
 
 	subject := email.Subject
 	subjectLower := strings.ToLower(subject)
 
+	// Trigger words commonly flagged by content filters.
 	spamWords := []string{
 		"free", "winner", "congratulations", "urgent", "act now", "limited time",
 		"click here", "buy now", "earn money", "make money", "cash prize",
-		"you won", "lottery", "million", "guaranteed", "no risk",
+		"you won", "lottery", "million", "guaranteed", "no risk", "risk-free",
+		"100% free", "order now", "discount", "special offer", "best price",
+		"satisfaction guaranteed", "double your", "extra income", "viagra",
 	}
-
 	shorteners := []string{"bit.ly", "tinyurl.com", "t.co", "goo.gl", "ow.ly", "short.link", "tiny.cc"}
 
-	dkimPass := len(email.Headers["Dkim-Signature"]) > 0 || len(email.Headers["DKIM-Signature"]) > 0
-	if dkimPass {
-		checks = append(checks, SpamCheckItem{Name: "DKIM_PRESENT", Score: -0.1, Description: "DKIM signature found", Pass: true})
+	// ---- Subject -----------------------------------------------------------
+	if email.Subject == "" {
+		add("SUBJECT_EMPTY", "subject", 1.0, "Missing subject line", false)
 	} else {
-		checks = append(checks, SpamCheckItem{Name: "DKIM_PRESENT", Score: 1.5, Description: "No DKIM signature found", Pass: false})
-	}
-
-	spfPass := false
-	for _, v := range email.Headers["Received-Spf"] {
-		if strings.Contains(strings.ToLower(v), "spf=pass") {
-			spfPass = true
-			break
-		}
-	}
-	if !spfPass {
-		for _, v := range email.Headers["Authentication-Results"] {
-			if strings.Contains(strings.ToLower(v), "spf=pass") {
-				spfPass = true
-				break
-			}
-		}
-	}
-	if spfPass {
-		checks = append(checks, SpamCheckItem{Name: "SPF_PRESENT", Score: -0.1, Description: "SPF pass found", Pass: true})
-	} else {
-		checks = append(checks, SpamCheckItem{Name: "SPF_PRESENT", Score: 1.0, Description: "No SPF pass result", Pass: false})
-	}
-
-	dmarcPass := false
-	for _, v := range email.Headers["Authentication-Results"] {
-		if strings.Contains(strings.ToLower(v), "dmarc=pass") {
-			dmarcPass = true
-			break
-		}
-	}
-	if dmarcPass {
-		checks = append(checks, SpamCheckItem{Name: "DMARC_PRESENT", Score: -0.1, Description: "DMARC pass found", Pass: true})
-	} else {
-		checks = append(checks, SpamCheckItem{Name: "DMARC_PRESENT", Score: 0.5, Description: "No DMARC result", Pass: false})
+		add("SUBJECT_EMPTY", "subject", 0, "Subject is present", true)
 	}
 
 	if len(subject) > 5 {
-		letters := 0
-		upper := 0
+		letters, upper := 0, 0
 		for _, c := range subject {
 			if unicode.IsLetter(c) {
 				letters++
@@ -103,12 +93,25 @@ func runSpamCheck(email *store.Email) SpamCheckResult {
 			}
 		}
 		if letters > 0 && float64(upper)/float64(letters) > 0.5 {
-			checks = append(checks, SpamCheckItem{Name: "SUBJECT_ALL_CAPS", Score: 2.0, Description: "Subject is mostly uppercase", Pass: false})
+			add("SUBJECT_ALL_CAPS", "subject", 2.0, "Subject is mostly uppercase — looks shouty", false)
 		} else {
-			checks = append(checks, SpamCheckItem{Name: "SUBJECT_ALL_CAPS", Score: 0, Description: "Subject case looks normal", Pass: true})
+			add("SUBJECT_ALL_CAPS", "subject", 0, "Subject capitalisation looks normal", true)
 		}
 	} else {
-		checks = append(checks, SpamCheckItem{Name: "SUBJECT_ALL_CAPS", Score: 0, Description: "Subject case looks normal", Pass: true})
+		add("SUBJECT_ALL_CAPS", "subject", 0, "Subject capitalisation looks normal", true)
+	}
+
+	// Overly long subjects get clipped in most clients and look spammy.
+	if len([]rune(subject)) > 150 {
+		add("SUBJECT_TOO_LONG", "subject", 0.5, fmt.Sprintf("Subject is very long (%d chars) — clients will clip it", len([]rune(subject))), false)
+	} else {
+		add("SUBJECT_TOO_LONG", "subject", 0, "Subject length looks reasonable", true)
+	}
+
+	if excessivePunct.MatchString(subject) {
+		add("SUBJECT_EXCESSIVE_PUNCTUATION", "subject", 0.5, "Excessive punctuation in subject (!!! / ???)", false)
+	} else {
+		add("SUBJECT_EXCESSIVE_PUNCTUATION", "subject", 0, "Subject punctuation looks normal", true)
 	}
 
 	subjectMatches := 0
@@ -117,17 +120,18 @@ func runSpamCheck(email *store.Email) SpamCheckResult {
 			subjectMatches++
 		}
 	}
-	subjectSpamScore := float64(subjectMatches) * 1.0
+	subjectSpamScore := float64(subjectMatches)
 	if subjectSpamScore > 3.0 {
 		subjectSpamScore = 3.0
 	}
 	if subjectMatches == 0 {
-		checks = append(checks, SpamCheckItem{Name: "SUBJECT_SPAM_WORDS", Score: 0, Description: "No spam keywords in subject", Pass: true})
+		add("SUBJECT_SPAM_WORDS", "content", 0, "No trigger words in subject", true)
 	} else {
-		checks = append(checks, SpamCheckItem{Name: "SUBJECT_SPAM_WORDS", Score: subjectSpamScore, Description: "Spam keywords found in subject", Pass: false})
+		add("SUBJECT_SPAM_WORDS", "content", subjectSpamScore, fmt.Sprintf("%d trigger word(s) in subject", subjectMatches), false)
 	}
 
-	bodyLower := strings.ToLower(email.Text)
+	// ---- Body content ------------------------------------------------------
+	bodyLower := strings.ToLower(email.Text + " " + email.HTML)
 	bodyMatches := 0
 	for _, word := range spamWords {
 		if strings.Contains(bodyLower, word) {
@@ -139,45 +143,43 @@ func runSpamCheck(email *store.Email) SpamCheckResult {
 		bodySpamScore = 2.0
 	}
 	if bodyMatches == 0 {
-		checks = append(checks, SpamCheckItem{Name: "BODY_SPAM_WORDS", Score: 0, Description: "No spam keywords in body", Pass: true})
+		add("BODY_SPAM_WORDS", "content", 0, "No trigger words in body", true)
 	} else {
-		checks = append(checks, SpamCheckItem{Name: "BODY_SPAM_WORDS", Score: bodySpamScore, Description: "Spam keywords in message body", Pass: false})
+		add("BODY_SPAM_WORDS", "content", bodySpamScore, fmt.Sprintf("%d trigger word(s) in body", bodyMatches), false)
 	}
 
-	if email.HTML != "" && email.Text == "" {
-		checks = append(checks, SpamCheckItem{Name: "MISSING_TEXT_PART", Score: 0.5, Description: "No plain text alternative", Pass: false})
+	// ---- Structure ---------------------------------------------------------
+	if email.HTML != "" && strings.TrimSpace(email.Text) == "" {
+		add("MISSING_TEXT_PART", "structure", 1.0, "HTML email has no plain-text alternative — hurts rendering & deliverability", false)
 	} else {
-		checks = append(checks, SpamCheckItem{Name: "MISSING_TEXT_PART", Score: 0, Description: "Plain text part present", Pass: true})
+		add("MISSING_TEXT_PART", "structure", 0, "Plain-text alternative present", true)
 	}
 
-	linkCount := strings.Count(email.HTML, "<a href")
+	// Image-heavy with little real text is a classic spam pattern.
+	if email.HTML != "" {
+		imgCount := strings.Count(strings.ToLower(email.HTML), "<img")
+		visibleText := strings.TrimSpace(tagStripper.ReplaceAllString(email.HTML, " "))
+		if email.Text != "" {
+			visibleText = strings.TrimSpace(email.Text)
+		}
+		if imgCount >= 1 && len(visibleText) < 100 {
+			add("IMAGE_HEAVY", "structure", 1.0, fmt.Sprintf("Mostly images, little text (%d image(s), %d chars of text)", imgCount, len(visibleText)), false)
+		} else {
+			add("IMAGE_HEAVY", "structure", 0, "Healthy text-to-image balance", true)
+		}
+	} else {
+		add("IMAGE_HEAVY", "structure", 0, "Healthy text-to-image balance", true)
+	}
+
+	// ---- Links -------------------------------------------------------------
+	linkCount := strings.Count(strings.ToLower(email.HTML), "<a href")
 	if linkCount > 10 {
-		checks = append(checks, SpamCheckItem{Name: "EXCESSIVE_LINKS", Score: 1.0, Description: fmt.Sprintf("Excessive links: %d found", linkCount), Pass: false})
+		add("EXCESSIVE_LINKS", "links", 1.0, fmt.Sprintf("Excessive links: %d found", linkCount), false)
 	} else {
-		checks = append(checks, SpamCheckItem{Name: "EXCESSIVE_LINKS", Score: 0, Description: "Link count looks normal", Pass: true})
+		add("EXCESSIVE_LINKS", "links", 0, "Link count looks normal", true)
 	}
 
-	hasUnsubscribe := len(email.Headers["List-Unsubscribe"]) > 0
-	if hasUnsubscribe {
-		checks = append(checks, SpamCheckItem{Name: "LIST_UNSUBSCRIBE", Score: -0.5, Description: "List-Unsubscribe header present", Pass: true})
-	} else {
-		checks = append(checks, SpamCheckItem{Name: "LIST_UNSUBSCRIBE", Score: 0.3, Description: "No List-Unsubscribe header", Pass: false})
-	}
-
-	if strings.Contains(email.From, "<") {
-		checks = append(checks, SpamCheckItem{Name: "MISSING_FROM_NAME", Score: 0, Description: "From address has display name", Pass: true})
-	} else {
-		checks = append(checks, SpamCheckItem{Name: "MISSING_FROM_NAME", Score: 0.3, Description: "From has no display name", Pass: false})
-	}
-
-	if email.Subject == "" {
-		checks = append(checks, SpamCheckItem{Name: "SUBJECT_EMPTY", Score: 1.0, Description: "Missing subject", Pass: false})
-	} else {
-		checks = append(checks, SpamCheckItem{Name: "SUBJECT_EMPTY", Score: 0, Description: "Subject is present", Pass: true})
-	}
-
-	combined := email.HTML + email.Text
-	combinedLower := strings.ToLower(combined)
+	combinedLower := strings.ToLower(email.HTML + email.Text)
 	hasShortener := false
 	for _, domain := range shorteners {
 		if strings.Contains(combinedLower, domain) {
@@ -186,29 +188,63 @@ func runSpamCheck(email *store.Email) SpamCheckResult {
 		}
 	}
 	if hasShortener {
-		checks = append(checks, SpamCheckItem{Name: "URL_SHORTENER", Score: 1.5, Description: "URL shortener detected (may be tracking link)", Pass: false})
+		add("URL_SHORTENER", "links", 1.5, "URL shortener detected — filters distrust hidden destinations", false)
 	} else {
-		checks = append(checks, SpamCheckItem{Name: "URL_SHORTENER", Score: 0, Description: "No URL shorteners found", Pass: true})
+		add("URL_SHORTENER", "links", 0, "No URL shorteners found", true)
 	}
 
-	excessivePunct := regexp.MustCompile(`[!?]{3,}`)
-	if excessivePunct.MatchString(subject) {
-		checks = append(checks, SpamCheckItem{Name: "EXCESSIVE_PUNCTUATION", Score: 0.5, Description: "Excessive punctuation in subject", Pass: false})
+	// ---- Hygiene / best practices -----------------------------------------
+	if len(email.Headers["List-Unsubscribe"]) > 0 {
+		add("LIST_UNSUBSCRIBE", "hygiene", -0.5, "List-Unsubscribe header present — good for bulk mail", true)
 	} else {
-		checks = append(checks, SpamCheckItem{Name: "EXCESSIVE_PUNCTUATION", Score: 0, Description: "Subject punctuation looks normal", Pass: true})
+		add("LIST_UNSUBSCRIBE", "hygiene", 0.5, "No List-Unsubscribe header — recommended for marketing/bulk mail", false)
+	}
+
+	if strings.Contains(email.From, "<") {
+		add("MISSING_FROM_NAME", "hygiene", 0, "From address has a display name", true)
+	} else {
+		add("MISSING_FROM_NAME", "hygiene", 0.3, "From has no display name", false)
 	}
 
 	if len(email.Attachments) > 0 {
-		checks = append(checks, SpamCheckItem{Name: "HAS_ATTACHMENT", Score: 0.3, Description: fmt.Sprintf("Email has %d attachment(s)", len(email.Attachments)), Pass: false})
+		add("HAS_ATTACHMENT", "hygiene", 0.3, fmt.Sprintf("Email has %d attachment(s) — bulk mail with attachments is filtered harder", len(email.Attachments)), false)
 	} else {
-		checks = append(checks, SpamCheckItem{Name: "HAS_ATTACHMENT", Score: 0, Description: "No attachments", Pass: true})
+		add("HAS_ATTACHMENT", "hygiene", 0, "No attachments", true)
 	}
 
+	// ---- Authentication (informational only) -------------------------------
+	// These are added by the sending mail server, not by the message itself,
+	// so a local catcher can only report presence — never validate them. They
+	// do not affect the content score.
+	dkimPass := len(email.Headers["Dkim-Signature"]) > 0 || len(email.Headers["DKIM-Signature"]) > 0
+	if dkimPass {
+		info("DKIM_PRESENT", "DKIM signature header present (not validated locally)", true)
+	} else {
+		info("DKIM_PRESENT", "No DKIM signature — normally added by your mail server, not the message", false)
+	}
+
+	spfPass := headerContains(email, "Received-Spf", "spf=pass") || headerContains(email, "Authentication-Results", "spf=pass")
+	if spfPass {
+		info("SPF_PRESENT", "SPF pass header present (not validated locally)", true)
+	} else {
+		info("SPF_PRESENT", "No SPF result — added by your mail server during sending, not the message", false)
+	}
+
+	dmarcPass := headerContains(email, "Authentication-Results", "dmarc=pass")
+	if dmarcPass {
+		info("DMARC_PRESENT", "DMARC pass header present (not validated locally)", true)
+	} else {
+		info("DMARC_PRESENT", "No DMARC result — policy lives in DNS, not in the message", false)
+	}
+
+	// ---- Total (content checks only) --------------------------------------
 	var totalScore float64
 	for _, c := range checks {
+		if c.Info {
+			continue
+		}
 		totalScore += c.Score
 	}
-
 	if totalScore < 0 {
 		totalScore = 0
 	}
@@ -228,4 +264,13 @@ func runSpamCheck(email *store.Email) SpamCheckResult {
 		Level:  level,
 		Checks: checks,
 	}
+}
+
+func headerContains(email *store.Email, header, needle string) bool {
+	for _, v := range email.Headers[header] {
+		if strings.Contains(strings.ToLower(v), needle) {
+			return true
+		}
+	}
+	return false
 }
