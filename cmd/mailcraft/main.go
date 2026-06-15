@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -23,16 +24,18 @@ func main() {
 		os.Exit(1)
 	}
 
-	level := slog.LevelInfo
-	switch cfg.LogLevel {
-	case "debug":
-		level = slog.LevelDebug
-	case "warn":
-		level = slog.LevelWarn
-	case "error":
-		level = slog.LevelError
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.LevelVar})))
+
+	var tlsCfg *tls.Config
+	if cfg.TLSCert != "" && cfg.TLSKey != "" {
+		cert, err := tls.LoadX509KeyPair(cfg.TLSCert, cfg.TLSKey)
+		if err != nil {
+			slog.Error("tls: failed to load cert/key", "err", err)
+			os.Exit(1)
+		}
+		tlsCfg = &tls.Config{Certificates: []tls.Certificate{cert}}
+		slog.Info("tls: STARTTLS enabled")
 	}
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: level})))
 
 	st := store.NewMemoryStore(cfg.MaxEmails)
 	defer st.Close()
@@ -44,7 +47,7 @@ func main() {
 	}
 
 	smtpHandler := mcsmtp.DefaultHandler(st, eng)
-	smtpSrv := mcsmtp.NewServer(cfg.SMTPAddr, cfg.MaxSize, 100, smtpHandler)
+	smtpSrv := mcsmtp.NewServer(cfg.SMTPAddr, cfg.MaxSize, 100, tlsCfg, smtpHandler)
 	if err := smtpSrv.Start(); err != nil {
 		slog.Error("smtp server error", "err", err)
 		os.Exit(1)

@@ -25,7 +25,7 @@ func startTestServer(t *testing.T, st store.Store) string {
 	t.Helper()
 	eng := &noopEngine{}
 	handler := mcsmtp.DefaultHandler(st, eng)
-	srv := mcsmtp.NewServer("127.0.0.1:0", 26214400, 100, handler)
+	srv := mcsmtp.NewServer("127.0.0.1:0", 26214400, 100, nil, handler)
 	if err := srv.Start(); err != nil {
 		t.Fatalf("start server: %v", err)
 	}
@@ -256,7 +256,7 @@ func TestSMTPMaxSize(t *testing.T) {
 	st := store.NewMemoryStore(100)
 	eng := &noopEngine{}
 	handler := mcsmtp.DefaultHandler(st, eng)
-	srv := mcsmtp.NewServer("127.0.0.1:0", 1024, 100, handler)
+	srv := mcsmtp.NewServer("127.0.0.1:0", 1024, 100, nil, handler)
 	if err := srv.Start(); err != nil {
 		t.Fatalf("start: %v", err)
 	}

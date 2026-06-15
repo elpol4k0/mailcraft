@@ -215,6 +215,32 @@ export async function listFolders(): Promise<Record<string, number>> {
   return request<Record<string, number>>('/folders');
 }
 
+export async function renameFolder(name: string, newName: string): Promise<void> {
+  return request(`/folders/${encodeURIComponent(name)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ new_name: newName }),
+  });
+}
+
+export async function deleteFolderApi(name: string): Promise<void> {
+  return request(`/folders/${encodeURIComponent(name)}`, { method: 'DELETE' });
+}
+
+export interface ConfigData {
+  smtp_addr: string;
+  http_addr: string;
+  max_emails: number;
+  base_path: string;
+  log_level: string;
+}
+
+export async function patchConfig(patch: { log_level?: string; max_emails?: number }): Promise<ConfigData> {
+  return request<ConfigData>('/config', {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  });
+}
+
 export async function listTags(): Promise<Record<string, number>> {
   return request<Record<string, number>>('/tags');
 }

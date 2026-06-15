@@ -2,6 +2,7 @@ import { state, showToast } from '../state';
 import { el } from '../utils';
 import { icon } from '../icons';
 import { confirm } from '../dialog';
+import { patchConfig } from '../api';
 
 interface ConfigResponse {
   smtp_addr: string;
@@ -63,13 +64,57 @@ export function createSettingsPage(): HTMLElement {
   const storageCard = el('div', 'settings-card');
   const storageTitle = el('div', 'settings-card-title', 'Storage');
 
-  const maxEmailsRow = buildRow('Max Emails', '...');
   const emailCountRow = buildRow('Current Email Count', '...');
   const sizeRow = buildRow('Current Size', '...');
 
   const storageRows = el('div', '');
-  storageRows.append(maxEmailsRow.el, emailCountRow.el, sizeRow.el);
+  storageRows.append(emailCountRow.el, sizeRow.el);
   storageCard.append(storageTitle, storageRows);
+
+  const runtimeCard = el('div', 'settings-card');
+  const runtimeTitle = el('div', 'settings-card-title', 'Runtime Configuration');
+
+  const maxEmailsInput = el('input', 'settings-input') as HTMLInputElement;
+  maxEmailsInput.type = 'number';
+  maxEmailsInput.min = '1';
+  maxEmailsInput.style.width = '100px';
+
+  const logLevelSelect = el('select', 'settings-input') as HTMLSelectElement;
+  ['debug', 'info', 'warn', 'error'].forEach(level => {
+    const opt = document.createElement('option');
+    opt.value = level;
+    opt.textContent = level;
+    logLevelSelect.appendChild(opt);
+  });
+
+  const maxEmailsRow = buildEditRow('Max Emails', maxEmailsInput);
+  const logLevelRow = buildEditRow('Log Level', logLevelSelect);
+
+  const saveBtn = el('button', 'btn btn-primary btn-sm', 'Save');
+  saveBtn.style.marginTop = '12px';
+  saveBtn.addEventListener('click', async () => {
+    const maxEmails = parseInt(maxEmailsInput.value, 10);
+    const logLevel = logLevelSelect.value;
+    if (isNaN(maxEmails) || maxEmails < 1) {
+      showToast('Max emails must be >= 1', 'error');
+      return;
+    }
+    try {
+      saveBtn.disabled = true;
+      const updated = await patchConfig({ log_level: logLevel, max_emails: maxEmails });
+      maxEmailsInput.value = String(updated.max_emails);
+      logLevelSelect.value = updated.log_level;
+      showToast('Settings saved', 'success');
+    } catch {
+      showToast('Failed to save settings', 'error');
+    } finally {
+      saveBtn.disabled = false;
+    }
+  });
+
+  const runtimeRows = el('div', '');
+  runtimeRows.append(maxEmailsRow, logLevelRow);
+  runtimeCard.append(runtimeTitle, runtimeRows, saveBtn);
 
   const dangerCard = el('div', 'settings-card settings-danger');
   const dangerTitle = el('div', 'settings-card-title', 'Danger Zone');
@@ -89,14 +134,14 @@ export function createSettingsPage(): HTMLElement {
       document.dispatchEvent(new CustomEvent('mailcraft:refresh-list'));
       showToast('All emails deleted', 'success');
       await loadData();
-    } catch (e) {
+    } catch {
       showToast('Failed to delete emails', 'error');
     }
   });
 
   dangerCard.append(dangerTitle, dangerDesc, deleteAllBtn);
 
-  content.append(serverCard, storageCard, dangerCard);
+  content.append(serverCard, storageCard, runtimeCard, dangerCard);
 
   async function loadData() {
     try {
@@ -111,10 +156,12 @@ export function createSettingsPage(): HTMLElement {
       versionRow.setValue(healthRes.version ? `v${healthRes.version}` : '-');
       uptimeRow.setValue(typeof healthRes.uptime_s === 'number' ? formatUptime(healthRes.uptime_s) : '-');
 
-      maxEmailsRow.setValue(String(configRes.max_emails ?? '-'));
-      emailCountRow.setValue(String(statsRes.total ?? '-'));
+      emailCountRow.querySelector('.settings-value')!.textContent = String(statsRes.total ?? '-');
       const sizeMB = statsRes.size_bytes ? (statsRes.size_bytes / (1024 * 1024)).toFixed(2) + ' MB' : '0 MB';
       sizeRow.setValue(sizeMB);
+
+      maxEmailsInput.value = String(configRes.max_emails ?? 5000);
+      logLevelSelect.value = configRes.log_level ?? 'info';
     } catch (e) {
       console.error('Failed to load settings data', e);
     }
@@ -144,4 +191,11 @@ function buildRow(label: string, initialValue: string): { el: HTMLElement; setVa
     el: row,
     setValue: (v: string) => { valueEl.textContent = v; },
   };
+}
+
+function buildEditRow(label: string, inputEl: HTMLElement): HTMLElement {
+  const row = el('div', 'settings-row');
+  const labelEl = el('div', 'settings-label', label);
+  row.append(labelEl, inputEl);
+  return row;
 }

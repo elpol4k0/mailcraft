@@ -1,8 +1,10 @@
-import { state } from '../state';
+import { state, showToast } from '../state';
 import type { ViewMode } from '../state';
 import { el } from '../utils';
 import { icon } from '../icons';
 import type { IconName } from '../icons';
+import { confirm, prompt } from '../dialog';
+import { renameFolder, deleteFolderApi, listFolders } from '../api';
 
 export function createSidebar(): HTMLElement {
   const sidebar = el('aside', 'sidebar');
@@ -153,9 +155,48 @@ export function createSidebar(): HTMLElement {
       const item = el('div', 'sidebar-folder-item');
       const iconEl = el('span', 'sidebar-folder-icon');
       iconEl.innerHTML = icon('folder', 13);
-      const name = el('span', 'sidebar-folder-name', folder);
+      const nameEl = el('span', 'sidebar-folder-name', folder);
       const cnt = el('span', 'sidebar-folder-count', String(count));
-      item.append(iconEl, name, cnt);
+
+      const actions = el('div', 'sidebar-folder-actions');
+
+      const renameBtn = el('button', 'sidebar-folder-action-btn');
+      renameBtn.innerHTML = icon('pencil', 11);
+      renameBtn.title = 'Rename folder';
+      renameBtn.addEventListener('click', async e => {
+        e.stopPropagation();
+        const newName = await prompt(`Rename folder "${folder}" to:`, folder);
+        if (!newName || newName === folder) return;
+        try {
+          await renameFolder(folder, newName);
+          if (state.filterFolder.value === folder) state.filterFolder.set(newName);
+          const updated = await listFolders();
+          state.folders.set(updated);
+          showToast('Folder renamed', 'success');
+        } catch {
+          showToast('Failed to rename folder', 'error');
+        }
+      });
+
+      const deleteBtn = el('button', 'sidebar-folder-action-btn');
+      deleteBtn.innerHTML = icon('trash-2', 11);
+      deleteBtn.title = 'Delete folder';
+      deleteBtn.addEventListener('click', async e => {
+        e.stopPropagation();
+        if (!await confirm(`Remove all emails from folder "${folder}"?`, true)) return;
+        try {
+          await deleteFolderApi(folder);
+          if (state.filterFolder.value === folder) state.filterFolder.set(null);
+          const updated = await listFolders();
+          state.folders.set(updated);
+          showToast('Folder deleted', 'success');
+        } catch {
+          showToast('Failed to delete folder', 'error');
+        }
+      });
+
+      actions.append(renameBtn, deleteBtn);
+      item.append(iconEl, nameEl, actions, cnt);
       item.classList.toggle('active', state.filterFolder.value === folder);
       item.addEventListener('click', () => {
         state.filterFolder.set(folder);

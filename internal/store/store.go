@@ -154,6 +154,8 @@ type Store interface {
 	Folders(ctx context.Context) (map[string]int, error)
 	RenameTag(ctx context.Context, oldName, newName string) error
 	DeleteTag(ctx context.Context, name string) error
+	RenameFolder(ctx context.Context, oldName, newName string) error
+	DeleteFolder(ctx context.Context, name string) error
 
 	ListRules(ctx context.Context) ([]*Rule, error)
 	AddRule(ctx context.Context, rule *Rule) error

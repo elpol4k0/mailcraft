@@ -3,6 +3,7 @@ package config
 import (
 	"flag"
 	"fmt"
+	"log/slog"
 	"os"
 	"strconv"
 )
@@ -16,10 +17,14 @@ type Config struct {
 	MaxSize   int64
 	BasePath  string
 	LogLevel  string
+	TLSCert   string
+	TLSKey    string
+
+	LevelVar *slog.LevelVar
 }
 
 func Load() (*Config, error) {
-	cfg := &Config{}
+	cfg := &Config{LevelVar: &slog.LevelVar{}}
 
 	fs := flag.NewFlagSet("mailcraft", flag.ContinueOnError)
 
@@ -29,6 +34,8 @@ func Load() (*Config, error) {
 	maxSize := fs.Int64("max-size", envInt64Or("MC_MAX_SIZE", 26214400), "maximum message size in bytes")
 	basePath := fs.String("base-path", envOr("MC_BASE_PATH", "/"), "base path for reverse proxy")
 	logLevel := fs.String("log-level", envOr("MC_LOG_LEVEL", "info"), "log level: debug, info, warn, error")
+	tlsCert := fs.String("tls-cert", envOr("MC_TLS_CERT", ""), "path to TLS certificate file (enables STARTTLS)")
+	tlsKey := fs.String("tls-key", envOr("MC_TLS_KEY", ""), "path to TLS key file (enables STARTTLS)")
 	version := fs.Bool("version", false, "print version and exit")
 
 	if err := fs.Parse(os.Args[1:]); err != nil {
@@ -45,9 +52,25 @@ func Load() (*Config, error) {
 	cfg.MaxEmails = *maxEmails
 	cfg.MaxSize = *maxSize
 	cfg.BasePath = *basePath
-	cfg.LogLevel = *logLevel
+	cfg.TLSCert = *tlsCert
+	cfg.TLSKey = *tlsKey
+	cfg.SetLogLevel(*logLevel)
 
 	return cfg, nil
+}
+
+func (c *Config) SetLogLevel(level string) {
+	c.LogLevel = level
+	switch level {
+	case "debug":
+		c.LevelVar.Set(slog.LevelDebug)
+	case "warn":
+		c.LevelVar.Set(slog.LevelWarn)
+	case "error":
+		c.LevelVar.Set(slog.LevelError)
+	default:
+		c.LevelVar.Set(slog.LevelInfo)
+	}
 }
 
 func envOr(key, def string) string {

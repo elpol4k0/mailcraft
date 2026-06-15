@@ -233,6 +233,42 @@ func (s *MemoryStore) RenameTag(_ context.Context, oldName, newName string) erro
 	return nil
 }
 
+func (s *MemoryStore) RenameFolder(_ context.Context, oldName, newName string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, e := range s.emails {
+		if e.Folder == oldName {
+			e.Folder = newName
+		}
+	}
+	return nil
+}
+
+func (s *MemoryStore) DeleteFolder(_ context.Context, name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, e := range s.emails {
+		if e.Folder == name {
+			e.Folder = ""
+		}
+	}
+	return nil
+}
+
+func (s *MemoryStore) SetMaxEmails(n int) {
+	if n <= 0 {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.maxEmails = n
+	for len(s.emails) > n {
+		oldest := s.emails[0]
+		s.emails = s.emails[1:]
+		delete(s.index, oldest.ID)
+	}
+}
+
 func (s *MemoryStore) DeleteTag(_ context.Context, name string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
