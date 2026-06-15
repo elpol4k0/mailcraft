@@ -360,6 +360,39 @@ input::placeholder { color: var(--text-muted); }
   margin-left: auto;
 }
 
+.sidebar-folder-actions {
+  display: none;
+  align-items: center;
+  gap: 1px;
+  flex-shrink: 0;
+}
+
+.sidebar-folder-item:hover .sidebar-folder-actions {
+  display: flex;
+}
+
+.sidebar-folder-item:hover .sidebar-folder-count {
+  display: none;
+}
+
+.sidebar-folder-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  color: var(--text-muted);
+  transition: color var(--transition), background var(--transition);
+}
+
+.sidebar-folder-action-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-overlay);
+}
+
+.sidebar-folder-action-btn svg { width: 11px; height: 11px; }
+
 .sidebar-footer {
   padding: 10px 12px;
   border-top: 1px solid var(--border);

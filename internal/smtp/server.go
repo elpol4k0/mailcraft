@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"log/slog"
@@ -22,6 +23,7 @@ type Server struct {
 	addr       string
 	maxSize    int64
 	maxConns   int
+	tlsCfg     *tls.Config
 	handler    Handler
 	listener   net.Listener
 	wg         sync.WaitGroup
@@ -29,7 +31,7 @@ type Server struct {
 	shutdownCh chan struct{}
 }
 
-func NewServer(addr string, maxSize int64, maxConns int, handler Handler) *Server {
+func NewServer(addr string, maxSize int64, maxConns int, tlsCfg *tls.Config, handler Handler) *Server {
 	if maxSize <= 0 {
 		maxSize = 26214400
 	}
@@ -40,6 +42,7 @@ func NewServer(addr string, maxSize int64, maxConns int, handler Handler) *Serve
 		addr:       addr,
 		maxSize:    maxSize,
 		maxConns:   maxConns,
+		tlsCfg:     tlsCfg,
 		handler:    handler,
 		shutdownCh: make(chan struct{}),
 	}
@@ -117,6 +120,7 @@ func (s *Server) handleConn(conn net.Conn) {
 		conn:    conn,
 		rw:      bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn)),
 		maxSize: s.maxSize,
+		tlsCfg:  s.tlsCfg,
 	}
 	sess.run(context.Background(), s.handler)
 }
@@ -125,6 +129,8 @@ type session struct {
 	conn    net.Conn
 	rw      *bufio.ReadWriter
 	maxSize int64
+	tlsCfg  *tls.Config
+	isTLS   bool
 
 	from    string
 	to      []string
@@ -144,7 +150,10 @@ func (s *session) logClient(line string) {
 
 func (s *session) run(ctx context.Context, handler Handler) {
 	s.writeLine("220 mailcraft ESMTP ready")
+	s.loop(ctx, handler)
+}
 
+func (s *session) loop(ctx context.Context, handler Handler) {
 	scanner := bufio.NewScanner(s.rw.Reader)
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -166,9 +175,28 @@ func (s *session) run(ctx context.Context, handler Handler) {
 			s.writeLine("250-mailcraft")
 			s.writeLine("250-SIZE " + fmt.Sprintf("%d", s.maxSize))
 			s.writeLine("250-8BITMIME")
+			if s.tlsCfg != nil && !s.isTLS {
+				s.writeLine("250-STARTTLS")
+			}
 			s.writeLine("250 AUTH PLAIN LOGIN")
 		case strings.HasPrefix(cmd, "STARTTLS"):
+			if s.tlsCfg == nil || s.isTLS {
+				s.writeLine("454 TLS not available")
+				continue
+			}
 			s.writeLine("220 Ready to start TLS")
+			tlsConn := tls.Server(s.conn, s.tlsCfg)
+			if err := tlsConn.Handshake(); err != nil {
+				slog.Debug("smtp: tls handshake failed", "err", err)
+				return
+			}
+			s.conn = tlsConn
+			s.rw = bufio.NewReadWriter(bufio.NewReader(tlsConn), bufio.NewWriter(tlsConn))
+			s.isTLS = true
+			s.from = ""
+			s.to = nil
+			s.loop(ctx, handler)
+			return
 		case strings.HasPrefix(cmd, "AUTH"):
 			s.handleAuth(line)
 		case strings.HasPrefix(cmd, "MAIL FROM:"):

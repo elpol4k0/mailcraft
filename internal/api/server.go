@@ -74,6 +74,10 @@ func (s *Server) RegisterRoutes(r chi.Router) {
 		r.Put("/tags/{name}", s.handleRenameTag)
 
 		r.Get("/folders", s.handleListFolders)
+		r.Put("/folders/{name}", s.handleRenameFolder)
+		r.Delete("/folders/{name}", s.handleDeleteFolder)
+
+		r.Patch("/config", s.handlePatchConfig)
 	})
 }
 
