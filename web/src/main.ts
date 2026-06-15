@@ -2,7 +2,7 @@ import './styles/main.css';
 
 import { state, showToast, toasts, prependEmail, updateEmailInList, removeEmailFromList } from './state';
 import type { ToastType } from './state';
-import { listTags, listFolders, getStats, listEmails } from './api';
+import { listTags, listFolders, listMailboxes, getStats, listEmails } from './api';
 import type { Email } from './api';
 import { debounce, parseHash, setHash, el } from './utils';
 import { icon } from './icons';
@@ -161,10 +161,11 @@ function boot() {
 
 async function loadInitialData() {
   try {
-    const [statsRes, tagsRes, foldersRes] = await Promise.all([getStats(), listTags(), listFolders()]);
+    const [statsRes, tagsRes, foldersRes, mailboxesRes] = await Promise.all([getStats(), listTags(), listFolders(), listMailboxes()]);
     state.stats.set(statsRes);
     state.tags.set(tagsRes);
     state.folders.set(foldersRes);
+    state.mailboxes.set(mailboxesRes);
   } catch (e) {
     console.error('Failed to load initial data', e);
   }
@@ -209,6 +210,7 @@ function setupSSE() {
         refreshStats();
         refreshTags();
         refreshFolders();
+        refreshMailboxes();
         notifyNewEmail(email.from, email.subject);
         showToast(`New email from ${email.from.replace(/<[^>]+>/, '').trim() || email.from}`, 'info');
       }
@@ -269,6 +271,13 @@ async function refreshFolders() {
   try {
     const folders = await listFolders();
     state.folders.set(folders);
+  } catch {}
+}
+
+async function refreshMailboxes() {
+  try {
+    const mailboxes = await listMailboxes();
+    state.mailboxes.set(mailboxes);
   } catch {}
 }
 

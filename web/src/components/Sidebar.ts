@@ -56,6 +56,13 @@ export function createSidebar(): HTMLElement {
 
   sidebar.appendChild(nav);
 
+  const mailboxesSection = el('div', 'sidebar-section sidebar-mailbox-section');
+  const mailboxesTitle = el('div', 'sidebar-section-title', 'Mailboxes');
+  const mailboxesList = el('div', '');
+  mailboxesList.id = 'sidebar-mailboxes-list';
+  mailboxesSection.append(mailboxesTitle, mailboxesList);
+  sidebar.appendChild(mailboxesSection);
+
   const tagsSection = el('div', 'sidebar-section');
   const tagsTitle = el('div', 'sidebar-section-title', 'Tags');
   const tagsList = el('div', '');
@@ -137,6 +144,47 @@ export function createSidebar(): HTMLElement {
       if (nameEl) {
         const itemTag = nameEl.textContent?.slice(1);
         (item as HTMLElement).classList.toggle('active', itemTag === tag);
+      }
+    });
+  });
+
+  function updateMailboxes(mailboxes: Record<string, number>) {
+    mailboxesList.innerHTML = '';
+    const entries = Object.entries(mailboxes).sort((a, b) => b[1] - a[1]);
+    if (entries.length === 0) {
+      const empty = el('div', 'sidebar-mailbox-item', 'No mailboxes');
+      empty.style.color = 'var(--text-muted)';
+      empty.style.cursor = 'default';
+      mailboxesList.appendChild(empty);
+      return;
+    }
+    entries.forEach(([mailbox, count]) => {
+      const item = el('div', 'sidebar-mailbox-item');
+      const iconEl = el('span', 'sidebar-mailbox-icon');
+      iconEl.innerHTML = icon('inbox', 13);
+      const nameEl = el('span', 'sidebar-mailbox-name', mailbox);
+      const cnt = el('span', 'sidebar-mailbox-count', String(count));
+      item.append(iconEl, nameEl, cnt);
+      item.classList.toggle('active', state.filterMailbox.value === mailbox);
+      item.addEventListener('click', () => {
+        state.filterMailbox.set(mailbox);
+        state.view.set('inbox');
+        state.filterRead.set(null);
+        state.filterStarred.set(null);
+        state.filterTag.set(null);
+        state.filterFolder.set(null);
+      });
+      mailboxesList.appendChild(item);
+    });
+  }
+  state.mailboxes.subscribe(updateMailboxes);
+  updateMailboxes(state.mailboxes.value);
+
+  state.filterMailbox.subscribe(mailbox => {
+    mailboxesList.querySelectorAll('.sidebar-mailbox-item').forEach(item => {
+      const nameEl = item.querySelector('.sidebar-mailbox-name');
+      if (nameEl) {
+        (item as HTMLElement).classList.toggle('active', nameEl.textContent === mailbox);
       }
     });
   });

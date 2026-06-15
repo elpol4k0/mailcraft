@@ -295,6 +295,17 @@ func (s *session) handleData(ctx context.Context, handler Handler) error {
 	return nil
 }
 
+func extractMailbox(to []string) string {
+	if len(to) == 0 {
+		return ""
+	}
+	addr := to[0]
+	if at := strings.LastIndex(addr, "@"); at >= 0 {
+		return strings.ToLower(addr[at+1:])
+	}
+	return ""
+}
+
 func extractAngle(s string) string {
 	s = strings.TrimSpace(s)
 	if idx := strings.Index(s, " "); idx != -1 {
@@ -333,6 +344,7 @@ func DefaultHandler(st store.Store, engine interface {
 		}
 
 		email.SMTPLog = smtpLog
+		email.Mailbox = extractMailbox(to)
 
 		for i := range email.Attachments {
 			email.Attachments[i].Data = nil

@@ -205,6 +205,7 @@ export function createEmailList(): HTMLElement {
     if (state.search.value) params.q = state.search.value;
     if (state.filterTag.value) params.tag = state.filterTag.value;
     if (state.filterFolder.value) params.folder = state.filterFolder.value;
+    if (state.filterMailbox.value) params.mailbox = state.filterMailbox.value;
     if (view === 'unread' || state.filterRead.value !== null) {
       params.read = view === 'unread' ? false : (state.filterRead.value ?? undefined);
     }
@@ -344,6 +345,10 @@ export function createEmailList(): HTMLElement {
   }
 
   function updateHeader(view: string) {
+    if (state.filterMailbox.value) {
+      title.textContent = state.filterMailbox.value;
+      return;
+    }
     if (state.filterFolder.value) {
       title.textContent = state.filterFolder.value;
       return;
@@ -402,6 +407,10 @@ export function createEmailList(): HTMLElement {
   state.filterRead.subscribe(() => refreshList());
   state.filterStarred.subscribe(() => refreshList());
   state.filterFolder.subscribe(() => {
+    updateHeader(state.view.value);
+    refreshList();
+  });
+  state.filterMailbox.subscribe(() => {
     updateHeader(state.view.value);
     refreshList();
   });

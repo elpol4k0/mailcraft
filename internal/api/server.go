@@ -42,6 +42,7 @@ func (s *Server) RegisterRoutes(r chi.Router) {
 		r.Get("/events", s.handleEvents)
 		r.Get("/config", s.handleConfig)
 
+		r.Get("/emails/await", s.handleAwaitEmail)
 		r.Get("/emails", s.handleListEmails)
 		r.Delete("/emails", s.handleDeleteEmails)
 		r.Get("/emails/{id}", s.handleGetEmail)
@@ -72,6 +73,8 @@ func (s *Server) RegisterRoutes(r chi.Router) {
 		r.Get("/tags", s.handleListTags)
 		r.Delete("/tags/{name}", s.handleDeleteTag)
 		r.Put("/tags/{name}", s.handleRenameTag)
+
+		r.Get("/mailboxes", s.handleListMailboxes)
 
 		r.Get("/folders", s.handleListFolders)
 		r.Put("/folders/{name}", s.handleRenameFolder)

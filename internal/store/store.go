@@ -101,6 +101,7 @@ type Email struct {
 	Tags        []string            `json:"tags"`
 	Color       string              `json:"color,omitempty"`
 	Folder      string              `json:"folder,omitempty"`
+	Mailbox     string              `json:"mailbox,omitempty"`
 	Read        bool                `json:"read"`
 	Starred     bool                `json:"starred"`
 	Size        int                 `json:"size"`
@@ -119,6 +120,7 @@ type SearchFilter struct {
 	Query   string
 	Tag     string
 	Folder  string
+	Mailbox string
 	Read    *bool
 	Starred *bool
 	From    string
@@ -152,6 +154,7 @@ type Store interface {
 	Stats(ctx context.Context) (Stats, error)
 	Tags(ctx context.Context) (map[string]int, error)
 	Folders(ctx context.Context) (map[string]int, error)
+	Mailboxes(ctx context.Context) (map[string]int, error)
 	RenameTag(ctx context.Context, oldName, newName string) error
 	DeleteTag(ctx context.Context, name string) error
 	RenameFolder(ctx context.Context, oldName, newName string) error
