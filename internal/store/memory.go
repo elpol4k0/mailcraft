@@ -219,6 +219,19 @@ func (s *MemoryStore) Folders(_ context.Context) (map[string]int, error) {
 	return counts, nil
 }
 
+func (s *MemoryStore) Mailboxes(_ context.Context) (map[string]int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	counts := make(map[string]int)
+	for _, e := range s.emails {
+		if e.Mailbox != "" {
+			counts[e.Mailbox]++
+		}
+	}
+	return counts, nil
+}
+
 func (s *MemoryStore) RenameTag(_ context.Context, oldName, newName string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -413,6 +426,9 @@ func matchesFilter(e *Email, f SearchFilter) bool {
 		return false
 	}
 	if f.Folder != "" && e.Folder != f.Folder {
+		return false
+	}
+	if f.Mailbox != "" && e.Mailbox != f.Mailbox {
 		return false
 	}
 	if f.From != "" && !strings.Contains(strings.ToLower(e.From), strings.ToLower(f.From)) {

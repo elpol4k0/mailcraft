@@ -63,7 +63,9 @@ export const state = {
   stats: new Observable<Stats>(defaultStats),
   tags: new Observable<Record<string, number>>({}),
   folders: new Observable<Record<string, number>>({}),
+  mailboxes: new Observable<Record<string, number>>({}),
   filterFolder: new Observable<string | null>(null),
+  filterMailbox: new Observable<string | null>(null),
   sseConnected: new Observable<boolean>(false),
   smtpPort: new Observable<string>('1025'),
 };
@@ -94,6 +96,7 @@ export function clearFilters(): void {
   state.filterRead.set(null);
   state.filterStarred.set(null);
   state.filterFolder.set(null);
+  state.filterMailbox.set(null);
 }
 
 export function updateEmailInList(updated: Email): void {

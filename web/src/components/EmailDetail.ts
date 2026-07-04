@@ -1,6 +1,6 @@
 import { state, updateEmailInList, removeEmailFromList, showToast } from '../state';
 import type { Email, Attachment, LinkResult, LinkCheckResponse, HTMLCheckResult, HTMLCheckWarning, SpamCheckResult, SpamCheckItem } from '../api';
-import { getEmail, getEmailRaw, deleteEmail, patchEmail, addTag, removeTag, listTags, checkLinks, checkHTML, checkSpam, listEmails, exportEmailURL } from '../api';
+import { getEmail, getEmailRaw, deleteEmail, patchEmail, addTag, removeTag, listTags, checkLinks, checkHTML, checkSpam, listEmails, exportEmailURL, previewAttachmentURL } from '../api';
 import {
   relativeTime, formatDate, avatarColor, getInitials, senderName,
   attachmentIcon, formatSize, escapeHtml, el
@@ -341,6 +341,8 @@ export function createEmailDetail(): HTMLElement {
   }
 
   function buildAttachmentChip(emailId: string, att: Attachment): HTMLElement {
+    const isPreviewable = att.content_type.startsWith('image/') || att.content_type === 'application/pdf';
+
     const chip = document.createElement('a');
     chip.className = 'attachment-chip';
     chip.href = `/api/v1/emails/${emailId}/attachments/${encodeURIComponent(att.filename)}`;
@@ -351,7 +353,56 @@ export function createEmailDetail(): HTMLElement {
       <span class="truncate" style="max-width:180px" title="${escapeHtml(att.filename)}">${escapeHtml(att.filename)}</span>
       <span class="attachment-chip-size">${formatSize(att.size)}</span>
     `;
-    return chip;
+
+    if (!isPreviewable) return chip;
+
+    const wrapper = el('div', 'attachment-chip-group');
+    wrapper.appendChild(chip);
+
+    const previewBtn = el('button', 'attachment-preview-btn');
+    previewBtn.innerHTML = icon('eye', 12);
+    previewBtn.title = 'Preview';
+    previewBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      openAttachmentPreview(emailId, att);
+    });
+    wrapper.appendChild(previewBtn);
+
+    return wrapper;
+  }
+
+  function openAttachmentPreview(emailId: string, att: Attachment) {
+    const overlay = el('div', 'modal-overlay');
+    const modal = el('div', 'attachment-preview-modal');
+
+    const header = el('div', 'attachment-preview-header');
+    const title = el('span', 'attachment-preview-title', att.filename);
+    const closeBtn = el('button', 'modal-close', '✕');
+    closeBtn.addEventListener('click', () => overlay.remove());
+    header.append(title, closeBtn);
+    modal.appendChild(header);
+
+    const body = el('div', 'attachment-preview-body');
+    const url = previewAttachmentURL(emailId, att.filename);
+
+    if (att.content_type.startsWith('image/')) {
+      const img = document.createElement('img');
+      img.src = url;
+      img.className = 'attachment-preview-img';
+      img.alt = att.filename;
+      body.appendChild(img);
+    } else {
+      const frame = document.createElement('iframe');
+      frame.src = url;
+      frame.className = 'attachment-preview-pdf';
+      frame.title = att.filename;
+      body.appendChild(frame);
+    }
+
+    modal.appendChild(body);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
   }
 
   function switchTab(tab: DetailTab) {

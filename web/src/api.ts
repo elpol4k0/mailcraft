@@ -70,6 +70,7 @@ export interface EmailListParams {
   q?: string;
   tag?: string;
   folder?: string;
+  mailbox?: string;
   read?: boolean;
   starred?: boolean;
   from?: string;
@@ -111,6 +112,7 @@ export async function listEmails(params: EmailListParams = {}): Promise<EmailLis
   if (params.q) q.set('q', params.q);
   if (params.tag) q.set('tag', params.tag);
   if (params.folder) q.set('folder', params.folder);
+  if (params.mailbox) q.set('mailbox', params.mailbox);
   if (params.read !== undefined) q.set('read', String(params.read));
   if (params.starred !== undefined) q.set('starred', String(params.starred));
   if (params.from) q.set('from', params.from);
@@ -241,6 +243,10 @@ export async function patchConfig(patch: { log_level?: string; max_emails?: numb
   });
 }
 
+export async function listMailboxes(): Promise<Record<string, number>> {
+  return request<Record<string, number>>('/mailboxes');
+}
+
 export async function listTags(): Promise<Record<string, number>> {
   return request<Record<string, number>>('/tags');
 }
@@ -312,6 +318,10 @@ export interface SpamCheckResult {
 
 export async function checkSpam(emailId: string): Promise<SpamCheckResult> {
   return request<SpamCheckResult>(`/emails/${emailId}/spamcheck`);
+}
+
+export function previewAttachmentURL(emailId: string, filename: string): string {
+  return `/api/v1/emails/${emailId}/attachments/${encodeURIComponent(filename)}?inline=true`;
 }
 
 export async function getStats(): Promise<Stats> {

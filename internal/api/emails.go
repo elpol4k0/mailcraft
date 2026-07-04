@@ -2,6 +2,7 @@ package api
 
 import (
 	"archive/zip"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -18,12 +19,13 @@ import (
 func (s *Server) handleListEmails(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	filter := store.SearchFilter{
-		Query:  q.Get("q"),
-		Tag:    q.Get("tag"),
-		Folder: q.Get("folder"),
-		From:   q.Get("from"),
-		To:     q.Get("to"),
-		Sort:   q.Get("sort"),
+		Query:   q.Get("q"),
+		Tag:     q.Get("tag"),
+		Folder:  q.Get("folder"),
+		Mailbox: q.Get("mailbox"),
+		From:    q.Get("from"),
+		To:      q.Get("to"),
+		Sort:    q.Get("sort"),
 	}
 
 	if v := q.Get("read"); v != "" {
@@ -163,8 +165,12 @@ func (s *Server) handleGetAttachment(w http.ResponseWriter, r *http.Request) {
 	if ct == "" {
 		ct = "application/octet-stream"
 	}
+	disposition := "attachment"
+	if r.URL.Query().Get("inline") == "true" {
+		disposition = "inline"
+	}
 	w.Header().Set("Content-Type", ct)
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename=%q`, filename))
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`%s; filename=%q`, disposition, filename))
 	_, _ = w.Write(data)
 }
 
@@ -417,4 +423,121 @@ func (s *Server) handleExportEmails(w http.ResponseWriter, r *http.Request) {
 				email.Text)
 		}
 	}
+}
+
+func (s *Server) handleListMailboxes(w http.ResponseWriter, r *http.Request) {
+	mailboxes, err := s.store.Mailboxes(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("list mailboxes: %v", err))
+		return
+	}
+	writeJSON(w, http.StatusOK, mailboxes)
+}
+
+func (s *Server) handleAwaitEmail(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	from := q.Get("from")
+	to := q.Get("to")
+	subject := q.Get("subject")
+	body := q.Get("body")
+	tag := q.Get("tag")
+	mailbox := q.Get("mailbox")
+
+	timeout := 30 * time.Second
+	if ts := q.Get("timeout"); ts != "" {
+		if d, err := time.ParseDuration(ts); err == nil {
+			if d > 120*time.Second {
+				d = 120 * time.Second
+			}
+			if d < time.Second {
+				d = time.Second
+			}
+			timeout = d
+		}
+	}
+
+	// Check already-received emails first
+	filter := store.SearchFilter{From: from, To: to, Tag: tag, Mailbox: mailbox, Query: body, Limit: 200}
+	existing, _, _ := s.store.List(r.Context(), filter)
+	for _, e := range existing {
+		if awaitEmailMatches(e, from, to, subject, body, tag, mailbox) {
+			writeJSON(w, http.StatusOK, e)
+			return
+		}
+	}
+
+	// Subscribe to new events and wait
+	ch, cancel := s.store.Subscribe(r.Context())
+	defer cancel()
+
+	ctx, ctxCancel := context.WithTimeout(r.Context(), timeout)
+	defer ctxCancel()
+
+	for {
+		select {
+		case evt, ok := <-ch:
+			if !ok {
+				writeError(w, http.StatusServiceUnavailable, "store closed")
+				return
+			}
+			if evt.Type != "email.new" {
+				continue
+			}
+			email, ok := evt.Payload.(*store.Email)
+			if !ok {
+				continue
+			}
+			if awaitEmailMatches(email, from, to, subject, body, tag, mailbox) {
+				writeJSON(w, http.StatusOK, email)
+				return
+			}
+		case <-ctx.Done():
+			writeError(w, http.StatusRequestTimeout, "timeout: no matching email received")
+			return
+		}
+	}
+}
+
+func awaitEmailMatches(e *store.Email, from, to, subject, body, tag, mailbox string) bool {
+	if from != "" && !strings.Contains(strings.ToLower(e.From), strings.ToLower(from)) {
+		return false
+	}
+	if to != "" {
+		found := false
+		for _, t := range e.To {
+			if strings.Contains(strings.ToLower(t), strings.ToLower(to)) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	if subject != "" && !strings.Contains(strings.ToLower(e.Subject), strings.ToLower(subject)) {
+		return false
+	}
+	if body != "" {
+		bLow := strings.ToLower(body)
+		if !strings.Contains(strings.ToLower(e.Text), bLow) &&
+			!strings.Contains(strings.ToLower(e.HTML), bLow) {
+			return false
+		}
+	}
+	if tag != "" {
+		found := false
+		for _, t := range e.Tags {
+			if t == tag {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	if mailbox != "" && e.Mailbox != mailbox {
+		return false
+	}
+	return true
 }
